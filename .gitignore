@@ -1,0 +1,66 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+logs/
+*.log
+
+# Runtime data
+pids/
+*.pid
+*.seed
+*.pid.lock
+
+# Data storage (contains sensitive subscription data)
+data/
+*.json
+
+# Build output
+dist/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+tmp/
+temp/
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# Test files (contains sensitive tokens)
+test-*.js
+debug-*.js
+manual-*.js
+post-test-*.js
+diagnose.js
+cleanup-*.js
+
+# Service and installation files (may contain sensitive paths)
+*.sh
+*.plist
+
+# Slack app assets
+company_logo.png
+
+# TypeScript build cache
+*.tsbuildinfo
