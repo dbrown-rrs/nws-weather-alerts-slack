@@ -454,32 +454,41 @@ app.action('add_location_button', async ({ ack, body, client }) => {
 });
 
 app.view('add_location_modal', async ({ ack, body, view, client }) => {
-  await ack();
-  
   try {
     const result = await locationManager.processAddLocation(body.user.id, view.state.values);
     
-    await client.chat.postMessage({
-      channel: body.user.id,
-      text: `✅ Location "${result.nickname}" saved successfully!\n📍 ${result.location.formattedAddress}`
+    // Acknowledge with success and close modal
+    await ack();
+    
+    // Refresh the home view to show the new location
+    const homeView = await buildHomeView(body.user.id);
+    await client.views.publish({
+      user_id: body.user.id,
+      view: homeView
     });
     
-    // Refresh manage locations modal if it's open
+    // If manage locations modal was open, refresh it
     try {
-      const updatedModal = await locationManager.buildManageLocationsModal(body.user.id);
-      await client.views.update({
-        view_id: body.view.previous_view_id,
-        view: updatedModal
-      });
+      if (body.view.previous_view_id) {
+        const updatedModal = await locationManager.buildManageLocationsModal(body.user.id);
+        await client.views.update({
+          view_id: body.view.previous_view_id,
+          view: updatedModal
+        });
+      }
     } catch (updateError) {
       // Modal might not be open anymore, that's ok
+      console.log('Could not update previous modal:', updateError.message);
     }
     
   } catch (error) {
     console.error('Error saving location:', error);
-    await client.chat.postMessage({
-      channel: body.user.id,
-      text: `❌ Error saving location: ${error.message}`
+    // Acknowledge with error
+    await ack({
+      response_action: 'errors',
+      errors: {
+        location_address: error.message || 'Failed to save location. Please try again.'
+      }
     });
   }
 });
@@ -513,9 +522,23 @@ app.action('location_menu', async ({ ack, body, client, respond }) => {
         const forecastData = await forecastService.getSevenDayForecast(location.formattedAddress);
         const formatted = weatherFormatter.formatSevenDayForecast(forecastData);
         
-        await client.chat.postMessage({
-          channel: body.user.id,
-          ...formatted
+        // Open a new modal with the forecast
+        const forecastModal = {
+          type: 'modal',
+          title: {
+            type: 'plain_text',
+            text: '🌤️ Weather Forecast'
+          },
+          close: {
+            type: 'plain_text',
+            text: 'Close'
+          },
+          blocks: formatted.blocks
+        };
+        
+        await client.views.open({
+          trigger_id: body.trigger_id,
+          view: forecastModal
         });
       }
       
@@ -525,9 +548,23 @@ app.action('location_menu', async ({ ack, body, client, respond }) => {
         const conditionsData = await forecastService.getCurrentConditions(location.formattedAddress);
         const formatted = weatherFormatter.formatCurrentConditions(conditionsData);
         
-        await client.chat.postMessage({
-          channel: body.user.id,
-          ...formatted
+        // Open a new modal with current conditions
+        const conditionsModal = {
+          type: 'modal',
+          title: {
+            type: 'plain_text',
+            text: '🌡️ Current Conditions'
+          },
+          close: {
+            type: 'plain_text',
+            text: 'Close'
+          },
+          blocks: formatted.blocks
+        };
+        
+        await client.views.open({
+          trigger_id: body.trigger_id,
+          view: conditionsModal
         });
       }
     }
@@ -549,10 +586,27 @@ app.action('quick_forecast', async ({ ack, body, client }) => {
     const location = await locationManager.getUserLocationByNickname(body.user.id, nickname);
     
     if (!location) {
-      await client.chat.postEphemeral({
-        channel: body.channel?.id || body.user.id,
-        user: body.user.id,
-        text: `❌ Location "${nickname}" not found.`
+      // Show error in a modal since we can't send DMs
+      await client.views.open({
+        trigger_id: body.trigger_id,
+        view: {
+          type: 'modal',
+          title: {
+            type: 'plain_text',
+            text: 'Error'
+          },
+          close: {
+            type: 'plain_text',
+            text: 'Close'
+          },
+          blocks: [{
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `❌ Location "${nickname}" not found.`
+            }
+          }]
+        }
       });
       return;
     }
@@ -560,17 +614,46 @@ app.action('quick_forecast', async ({ ack, body, client }) => {
     const forecastData = await forecastService.getSevenDayForecast(location.formattedAddress);
     const formatted = weatherFormatter.formatSevenDayForecast(forecastData);
     
-    await client.chat.postMessage({
-      channel: body.user.id,
-      ...formatted
+    // Open forecast in a modal
+    await client.views.open({
+      trigger_id: body.trigger_id,
+      view: {
+        type: 'modal',
+        title: {
+          type: 'plain_text',
+          text: '🌤️ Weather Forecast'
+        },
+        close: {
+          type: 'plain_text',
+          text: 'Close'
+        },
+        blocks: formatted.blocks
+      }
     });
     
   } catch (error) {
     console.error('Error getting quick forecast:', error);
-    await client.chat.postEphemeral({
-      channel: body.channel?.id || body.user.id,
-      user: body.user.id,
-      text: `❌ Error getting forecast: ${error.message}`
+    // Show error in modal
+    await client.views.open({
+      trigger_id: body.trigger_id,
+      view: {
+        type: 'modal',
+        title: {
+          type: 'plain_text',
+          text: 'Error'
+        },
+        close: {
+          type: 'plain_text',
+          text: 'Close'
+        },
+        blocks: [{
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `❌ Error getting forecast: ${error.message}`
+          }
+        }]
+      }
     });
   }
 });
