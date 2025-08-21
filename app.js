@@ -534,6 +534,9 @@ app.action('manage_locations', async ({ ack, body, client }) => {
   // Acknowledge immediately
   await ack();
   
+  const startTime = Date.now();
+  console.log(`[MANAGE_LOCATIONS] Button clicked by ${body.user.id} at ${new Date().toISOString()}`);
+  
   try {
     // Open a loading modal immediately
     const loadingModal = {
@@ -558,22 +561,55 @@ app.action('manage_locations', async ({ ack, body, client }) => {
       ]
     };
     
-    // Open loading modal first
-    const result = await client.views.open({
-      trigger_id: body.trigger_id,
-      view: loadingModal
-    });
+    // Open loading modal first with fresh trigger_id
+    console.log(`[MANAGE_LOCATIONS] Opening loading modal (${Date.now() - startTime}ms elapsed)`);
+    let result;
+    try {
+      result = await client.views.open({
+        trigger_id: body.trigger_id,
+        view: loadingModal
+      });
+      console.log(`[MANAGE_LOCATIONS] Loading modal opened successfully (${Date.now() - startTime}ms elapsed)`);
+    } catch (triggerError) {
+      console.error(`[MANAGE_LOCATIONS] Failed to open loading modal (${Date.now() - startTime}ms elapsed):`, triggerError);
+      
+      // Fallback: Send ephemeral message if trigger_id expired
+      if (triggerError.data?.error === 'expired_trigger_id') {
+        await client.chat.postEphemeral({
+          channel: body.channel?.id || body.user.id,
+          user: body.user.id,
+          text: '⚠️ The request timed out. Please try clicking the Manage Locations button again.'
+        });
+      }
+      return;
+    }
     
-    // Now build the real modal with data
+    // Now build the real modal with data (can take time)
+    console.log(`[MANAGE_LOCATIONS] Building full modal (${Date.now() - startTime}ms elapsed)`);
     const modal = await locationManager.buildManageLocationsModal(body.user.id);
     
-    // Update the modal with actual content
+    // Update the modal with actual content (no trigger_id needed)
+    console.log(`[MANAGE_LOCATIONS] Updating to full modal (${Date.now() - startTime}ms elapsed)`);
     await client.views.update({
       view_id: result.view.id,
       view: modal
     });
+    
+    console.log(`[MANAGE_LOCATIONS] Successfully completed in ${Date.now() - startTime}ms`);
+    
   } catch (error) {
-    console.error('Error opening manage locations modal:', error);
+    console.error(`[MANAGE_LOCATIONS] Unexpected error (${Date.now() - startTime}ms elapsed):`, error);
+    
+    // Try to notify user of error
+    try {
+      await client.chat.postEphemeral({
+        channel: body.channel?.id || body.user.id,
+        user: body.user.id,
+        text: `❌ An error occurred while opening location manager: ${error.message || 'Unknown error'}. Please try again.`
+      });
+    } catch (notifyError) {
+      console.error('[MANAGE_LOCATIONS] Failed to notify user of error:', notifyError);
+    }
   }
 });
 
@@ -581,17 +617,82 @@ app.action('add_location_button', async ({ ack, body, client }) => {
   // Acknowledge immediately to prevent timeout
   await ack();
   
+  const startTime = Date.now();
+  console.log(`[ADD_LOCATION] Button clicked by ${body.user.id} at ${new Date().toISOString()}`);
+  
   try {
-    // Build modal synchronously (it doesn't need async data)
-    const modal = locationManager.buildAddLocationModal();
+    // Step 1: Open a simple loading modal IMMEDIATELY (within ms)
+    const loadingModal = {
+      type: 'modal',
+      callback_id: 'add_location_modal',
+      title: {
+        type: 'plain_text',
+        text: 'Add Location'
+      },
+      close: {
+        type: 'plain_text',
+        text: 'Cancel'
+      },
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: '⏳ *Preparing location form...*'
+          }
+        }
+      ]
+    };
     
-    // Open modal with the fresh trigger_id
-    await client.views.open({
-      trigger_id: body.trigger_id,
-      view: modal
+    // Open loading modal immediately with fresh trigger_id
+    console.log(`[ADD_LOCATION] Opening loading modal (${Date.now() - startTime}ms elapsed)`);
+    let modalResult;
+    try {
+      modalResult = await client.views.open({
+        trigger_id: body.trigger_id,
+        view: loadingModal
+      });
+      console.log(`[ADD_LOCATION] Loading modal opened successfully (${Date.now() - startTime}ms elapsed)`);
+    } catch (triggerError) {
+      console.error(`[ADD_LOCATION] Failed to open loading modal (${Date.now() - startTime}ms elapsed):`, triggerError);
+      
+      // Fallback: Send ephemeral message if trigger_id expired
+      if (triggerError.data?.error === 'expired_trigger_id') {
+        await client.chat.postEphemeral({
+          channel: body.channel?.id || body.user.id,
+          user: body.user.id,
+          text: '⚠️ The request timed out. Please try clicking the Add Location button again.'
+        });
+      }
+      return;
+    }
+    
+    // Step 2: Build the full modal (can take time now)
+    console.log(`[ADD_LOCATION] Building full modal (${Date.now() - startTime}ms elapsed)`);
+    const fullModal = locationManager.buildAddLocationModal();
+    
+    // Step 3: Update with the full modal content (no trigger_id needed)
+    console.log(`[ADD_LOCATION] Updating to full modal (${Date.now() - startTime}ms elapsed)`);
+    await client.views.update({
+      view_id: modalResult.view.id,
+      view: fullModal
     });
+    
+    console.log(`[ADD_LOCATION] Successfully completed in ${Date.now() - startTime}ms`);
+    
   } catch (error) {
-    console.error('Error opening add location modal:', error);
+    console.error(`[ADD_LOCATION] Unexpected error (${Date.now() - startTime}ms elapsed):`, error);
+    
+    // Try to notify user of error
+    try {
+      await client.chat.postEphemeral({
+        channel: body.channel?.id || body.user.id,
+        user: body.user.id,
+        text: `❌ An error occurred while opening the Add Location form: ${error.message || 'Unknown error'}. Please try again.`
+      });
+    } catch (notifyError) {
+      console.error('[ADD_LOCATION] Failed to notify user of error:', notifyError);
+    }
   }
 });
 
