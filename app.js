@@ -511,41 +511,69 @@ app.action('forecast_current', async ({ ack, body, respond }) => {
 
 // Location management commands and actions
 app.command('/weather-locations', async ({ command, ack, client, body }) => {
+  const startTime = Date.now();
+  console.log(`[CMD /weather-locations] Received at ${new Date().toISOString()}, user: ${body.user_id}`);
+  
+  // Acknowledge IMMEDIATELY - this is critical for slash commands
   await ack();
+  console.log(`[CMD /weather-locations] Acknowledged in ${Date.now() - startTime}ms`);
   
   try {
+    console.log(`[CMD /weather-locations] Building modal (${Date.now() - startTime}ms elapsed)`);
     const modal = await locationManager.buildManageLocationsModal(body.user_id);
     
+    console.log(`[CMD /weather-locations] Opening modal with trigger_id: ${body.trigger_id} (${Date.now() - startTime}ms elapsed)`);
     await client.views.open({
       trigger_id: body.trigger_id,
       view: modal
     });
+    console.log(`[CMD /weather-locations] Successfully opened modal (${Date.now() - startTime}ms elapsed)`);
   } catch (error) {
-    console.error('Error opening locations modal:', error);
+    console.error(`[CMD /weather-locations] Error opening modal (${Date.now() - startTime}ms elapsed):`, error);
+    
+    // Check if it's specifically a trigger_id issue
+    if (error.data?.error === 'expired_trigger_id') {
+      console.error(`[CMD /weather-locations] Trigger ID expired after ${Date.now() - startTime}ms. This should not happen with slash commands!`);
+    }
+    
     await client.chat.postEphemeral({
       channel: body.channel_id,
       user: body.user_id,
-      text: `❌ Error opening locations manager: ${error.message}`
+      text: `❌ Error opening locations manager: ${error.message}\n\nPlease try again. If this persists, contact support.`
     });
   }
 });
 
 app.command('/weather-add-location', async ({ command, ack, client, body }) => {
+  const startTime = Date.now();
+  console.log(`[CMD /weather-add-location] Received at ${new Date().toISOString()}, user: ${body.user_id}`);
+  
+  // Acknowledge IMMEDIATELY - this is critical for slash commands
   await ack();
+  console.log(`[CMD /weather-add-location] Acknowledged in ${Date.now() - startTime}ms`);
   
   try {
+    console.log(`[CMD /weather-add-location] Building modal (${Date.now() - startTime}ms elapsed)`);
     const modal = locationManager.buildAddLocationModal();
     
+    console.log(`[CMD /weather-add-location] Opening modal with trigger_id: ${body.trigger_id} (${Date.now() - startTime}ms elapsed)`);
     await client.views.open({
       trigger_id: body.trigger_id,
       view: modal
     });
+    console.log(`[CMD /weather-add-location] Successfully opened modal (${Date.now() - startTime}ms elapsed)`);
   } catch (error) {
-    console.error('Error opening add location modal:', error);
+    console.error(`[CMD /weather-add-location] Error opening modal (${Date.now() - startTime}ms elapsed):`, error);
+    
+    // Check if it's specifically a trigger_id issue
+    if (error.data?.error === 'expired_trigger_id') {
+      console.error(`[CMD /weather-add-location] Trigger ID expired after ${Date.now() - startTime}ms. This should not happen with slash commands!`);
+    }
+    
     await client.chat.postEphemeral({
       channel: body.channel_id,
       user: body.user_id,
-      text: `❌ Error opening add location form: ${error.message}`
+      text: `❌ Error opening add location form: ${error.message}\n\nPlease try again. If this persists, contact support.`
     });
   }
 });
