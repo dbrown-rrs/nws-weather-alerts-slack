@@ -4,6 +4,9 @@ const { buildHomeView, buildAlertDetailModal, buildAddFeedModal, buildEditFeedMo
 const { formatAlertMessage, formatAlertBlocks } = require('./functions/alert-formatter');
 const { getSubscriptions, addSubscription, removeSubscription, toggleSubscription, getProcessedAlerts, markAlertAsProcessed } = require('./functions/data-store');
 const { isAdmin } = require('./config/admins');
+const { ForecastService } = require('./services/forecast-service');
+const { WeatherFormatter } = require('./services/weather-formatter');
+const { LocationManager } = require('./functions/location-manager');
 require('dotenv').config();
 
 const app = new App({
@@ -17,6 +20,9 @@ const TARGET_CHANNEL = process.env.TARGET_CHANNEL_ID || 'C09BA83JGNS';
 const POLLING_INTERVAL = (parseInt(process.env.POLLING_INTERVAL_MINUTES) || 5) * 60 * 1000;
 
 const capParser = new CAPParser();
+const forecastService = new ForecastService();
+const weatherFormatter = new WeatherFormatter();
+const locationManager = new LocationManager();
 let pollingInterval = null;
 
 async function checkForAlerts() {
@@ -220,6 +226,352 @@ app.action('refresh_home', async ({ ack, body, client }) => {
     });
   } catch (error) {
     console.error('Error refreshing home view:', error);
+  }
+});
+
+// Weather forecast slash commands
+app.command('/weather-forecast', async ({ command, ack, respond }) => {
+  await ack();
+  
+  try {
+    const location = command.text.trim();
+    if (!location) {
+      await respond({
+        response_type: 'ephemeral',
+        text: 'Please specify a location. Example: `/weather-forecast New York, NY` or `/weather-forecast 10001`'
+      });
+      return;
+    }
+
+    // Send initial response
+    await respond({
+      response_type: 'in_channel',
+      text: `🔄 Getting 7-day forecast for "${location}"...`
+    });
+
+    // Get forecast data
+    const forecastData = await forecastService.getSevenDayForecast(location);
+    const formatted = weatherFormatter.formatSevenDayForecast(forecastData);
+
+    // Update with forecast
+    await respond({
+      response_type: 'in_channel',
+      ...formatted
+    });
+
+  } catch (error) {
+    console.error('Error in weather-forecast command:', error);
+    await respond({
+      response_type: 'ephemeral',
+      text: `❌ Error getting forecast: ${error.message}`
+    });
+  }
+});
+
+app.command('/weather-hourly', async ({ command, ack, respond }) => {
+  await ack();
+  
+  try {
+    const location = command.text.trim();
+    if (!location) {
+      await respond({
+        response_type: 'ephemeral',
+        text: 'Please specify a location. Example: `/weather-hourly Bergen County, NJ`'
+      });
+      return;
+    }
+
+    await respond({
+      response_type: 'in_channel',
+      text: `🔄 Getting hourly forecast for "${location}"...`
+    });
+
+    const forecastData = await forecastService.getHourlyForecast(location, 24);
+    const formatted = weatherFormatter.formatHourlyForecast(forecastData, 24);
+
+    await respond({
+      response_type: 'in_channel',
+      ...formatted
+    });
+
+  } catch (error) {
+    console.error('Error in weather-hourly command:', error);
+    await respond({
+      response_type: 'ephemeral',
+      text: `❌ Error getting hourly forecast: ${error.message}`
+    });
+  }
+});
+
+app.command('/weather-current', async ({ command, ack, respond }) => {
+  await ack();
+  
+  try {
+    const location = command.text.trim();
+    if (!location) {
+      await respond({
+        response_type: 'ephemeral',
+        text: 'Please specify a location. Example: `/weather-current Ramsey, NJ`'
+      });
+      return;
+    }
+
+    await respond({
+      response_type: 'in_channel',
+      text: `🔄 Getting current conditions for "${location}"...`
+    });
+
+    const conditionsData = await forecastService.getCurrentConditions(location);
+    const formatted = weatherFormatter.formatCurrentConditions(conditionsData);
+
+    await respond({
+      response_type: 'in_channel',
+      ...formatted
+    });
+
+  } catch (error) {
+    console.error('Error in weather-current command:', error);
+    await respond({
+      response_type: 'ephemeral',
+      text: `❌ Error getting current conditions: ${error.message}`
+    });
+  }
+});
+
+// Interactive button handlers for forecast actions
+app.action('forecast_7day', async ({ ack, body, respond }) => {
+  await ack();
+  
+  try {
+    const location = body.actions[0].value;
+    const forecastData = await forecastService.getSevenDayForecast(location);
+    const formatted = weatherFormatter.formatSevenDayForecast(forecastData);
+
+    await respond({
+      ...formatted,
+      replace_original: false
+    });
+  } catch (error) {
+    console.error('Error in forecast_7day action:', error);
+    await respond({
+      text: `❌ Error getting forecast: ${error.message}`,
+      replace_original: false
+    });
+  }
+});
+
+app.action('forecast_hourly', async ({ ack, body, respond }) => {
+  await ack();
+  
+  try {
+    const location = body.actions[0].value;
+    const forecastData = await forecastService.getHourlyForecast(location, 24);
+    const formatted = weatherFormatter.formatHourlyForecast(forecastData, 24);
+
+    await respond({
+      ...formatted,
+      replace_original: false
+    });
+  } catch (error) {
+    console.error('Error in forecast_hourly action:', error);
+    await respond({
+      text: `❌ Error getting hourly forecast: ${error.message}`,
+      replace_original: false
+    });
+  }
+});
+
+app.action('forecast_current', async ({ ack, body, respond }) => {
+  await ack();
+  
+  try {
+    const location = body.actions[0].value;
+    const conditionsData = await forecastService.getCurrentConditions(location);
+    const formatted = weatherFormatter.formatCurrentConditions(conditionsData);
+
+    await respond({
+      ...formatted,
+      replace_original: false
+    });
+  } catch (error) {
+    console.error('Error in forecast_current action:', error);
+    await respond({
+      text: `❌ Error getting current conditions: ${error.message}`,
+      replace_original: false
+    });
+  }
+});
+
+// Location management commands and actions
+app.command('/weather-locations', async ({ command, ack, client, body }) => {
+  await ack();
+  
+  try {
+    const modal = await locationManager.buildManageLocationsModal(body.user_id);
+    
+    await client.views.open({
+      trigger_id: body.trigger_id,
+      view: modal
+    });
+  } catch (error) {
+    console.error('Error opening locations modal:', error);
+    await client.chat.postEphemeral({
+      channel: body.channel_id,
+      user: body.user_id,
+      text: `❌ Error opening locations manager: ${error.message}`
+    });
+  }
+});
+
+app.action('manage_locations', async ({ ack, body, client }) => {
+  await ack();
+  
+  try {
+    const modal = await locationManager.buildManageLocationsModal(body.user.id);
+    
+    await client.views.open({
+      trigger_id: body.trigger_id,
+      view: modal
+    });
+  } catch (error) {
+    console.error('Error opening manage locations modal:', error);
+  }
+});
+
+app.action('add_location_button', async ({ ack, body, client }) => {
+  await ack();
+  
+  try {
+    const modal = locationManager.buildAddLocationModal();
+    
+    await client.views.open({
+      trigger_id: body.trigger_id,
+      view: modal
+    });
+  } catch (error) {
+    console.error('Error opening add location modal:', error);
+  }
+});
+
+app.view('add_location_modal', async ({ ack, body, view, client }) => {
+  await ack();
+  
+  try {
+    const result = await locationManager.processAddLocation(body.user.id, view.state.values);
+    
+    await client.chat.postMessage({
+      channel: body.user.id,
+      text: `✅ Location "${result.nickname}" saved successfully!\n📍 ${result.location.formattedAddress}`
+    });
+    
+    // Refresh manage locations modal if it's open
+    try {
+      const updatedModal = await locationManager.buildManageLocationsModal(body.user.id);
+      await client.views.update({
+        view_id: body.view.previous_view_id,
+        view: updatedModal
+      });
+    } catch (updateError) {
+      // Modal might not be open anymore, that's ok
+    }
+    
+  } catch (error) {
+    console.error('Error saving location:', error);
+    await client.chat.postMessage({
+      channel: body.user.id,
+      text: `❌ Error saving location: ${error.message}`
+    });
+  }
+});
+
+app.action('location_menu', async ({ ack, body, client, respond }) => {
+  await ack();
+  
+  try {
+    const actionValue = body.actions[0].selected_option.value;
+    const [action, nickname] = actionValue.split('_', 2);
+    
+    if (action === 'remove') {
+      await locationManager.removeUserLocation(body.user.id, nickname);
+      
+      await client.chat.postEphemeral({
+        channel: body.channel?.id || body.user.id,
+        user: body.user.id,
+        text: `✅ Location "${nickname}" removed successfully.`
+      });
+      
+      // Refresh the modal
+      const updatedModal = await locationManager.buildManageLocationsModal(body.user.id);
+      await client.views.update({
+        view_id: body.view.id,
+        view: updatedModal
+      });
+      
+    } else if (action === 'forecast') {
+      const location = await locationManager.getUserLocationByNickname(body.user.id, nickname);
+      if (location) {
+        const forecastData = await forecastService.getSevenDayForecast(location.formattedAddress);
+        const formatted = weatherFormatter.formatSevenDayForecast(forecastData);
+        
+        await client.chat.postMessage({
+          channel: body.user.id,
+          ...formatted
+        });
+      }
+      
+    } else if (action === 'current') {
+      const location = await locationManager.getUserLocationByNickname(body.user.id, nickname);
+      if (location) {
+        const conditionsData = await forecastService.getCurrentConditions(location.formattedAddress);
+        const formatted = weatherFormatter.formatCurrentConditions(conditionsData);
+        
+        await client.chat.postMessage({
+          channel: body.user.id,
+          ...formatted
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Error handling location menu:', error);
+    await client.chat.postEphemeral({
+      channel: body.channel?.id || body.user.id,
+      user: body.user.id,
+      text: `❌ Error: ${error.message}`
+    });
+  }
+});
+
+app.action('quick_forecast', async ({ ack, body, client }) => {
+  await ack();
+  
+  try {
+    const nickname = body.actions[0].value;
+    const location = await locationManager.getUserLocationByNickname(body.user.id, nickname);
+    
+    if (!location) {
+      await client.chat.postEphemeral({
+        channel: body.channel?.id || body.user.id,
+        user: body.user.id,
+        text: `❌ Location "${nickname}" not found.`
+      });
+      return;
+    }
+    
+    const forecastData = await forecastService.getSevenDayForecast(location.formattedAddress);
+    const formatted = weatherFormatter.formatSevenDayForecast(forecastData);
+    
+    await client.chat.postMessage({
+      channel: body.user.id,
+      ...formatted
+    });
+    
+  } catch (error) {
+    console.error('Error getting quick forecast:', error);
+    await client.chat.postEphemeral({
+      channel: body.channel?.id || body.user.id,
+      user: body.user.id,
+      text: `❌ Error getting forecast: ${error.message}`
+    });
   }
 });
 
