@@ -424,13 +424,45 @@ app.command('/weather-locations', async ({ command, ack, client, body }) => {
 });
 
 app.action('manage_locations', async ({ ack, body, client }) => {
+  // Acknowledge immediately
   await ack();
   
   try {
+    // Open a loading modal immediately
+    const loadingModal = {
+      type: 'modal',
+      callback_id: 'manage_locations_modal',
+      title: {
+        type: 'plain_text',
+        text: 'Manage Locations'
+      },
+      close: {
+        type: 'plain_text',
+        text: 'Close'
+      },
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: '⏳ *Loading your saved locations...*'
+          }
+        }
+      ]
+    };
+    
+    // Open loading modal first
+    const result = await client.views.open({
+      trigger_id: body.trigger_id,
+      view: loadingModal
+    });
+    
+    // Now build the real modal with data
     const modal = await locationManager.buildManageLocationsModal(body.user.id);
     
-    await client.views.open({
-      trigger_id: body.trigger_id,
+    // Update the modal with actual content
+    await client.views.update({
+      view_id: result.view.id,
       view: modal
     });
   } catch (error) {
@@ -439,11 +471,14 @@ app.action('manage_locations', async ({ ack, body, client }) => {
 });
 
 app.action('add_location_button', async ({ ack, body, client }) => {
+  // Acknowledge immediately to prevent timeout
   await ack();
   
   try {
+    // Build modal synchronously (it doesn't need async data)
     const modal = locationManager.buildAddLocationModal();
     
+    // Open modal with the fresh trigger_id
     await client.views.open({
       trigger_id: body.trigger_id,
       view: modal
