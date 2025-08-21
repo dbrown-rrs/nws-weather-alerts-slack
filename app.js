@@ -27,24 +27,48 @@ let pollingInterval = null;
 
 async function checkForAlerts() {
   console.log('Checking for weather alerts...');
-  const subscriptions = await getSubscriptions();
-  const processedAlerts = await getProcessedAlerts();
   
-  for (const subscription of subscriptions) {
-    if (!subscription.active) continue;
+  try {
+    const subscriptions = await getSubscriptions();
+    console.log(`Found ${subscriptions.length} subscription(s)`);
     
-    try {
-      const alerts = await capParser.fetchAndParseFeed(subscription.url);
-      
-      for (const alert of alerts) {
-        if (!processedAlerts.has(alert.id)) {
-          await postAlertToSlack(alert, subscription);
-          await markAlertAsProcessed(alert.id);
-        }
-      }
-    } catch (error) {
-      console.error(`Error checking feed ${subscription.url}:`, error);
+    if (subscriptions.length === 0) {
+      console.log('No subscriptions configured - using default feeds');
     }
+    
+    const processedAlerts = await getProcessedAlerts();
+    console.log(`Tracking ${processedAlerts.size} processed alerts`);
+    
+    let checkedCount = 0;
+    let alertCount = 0;
+    
+    for (const subscription of subscriptions) {
+      if (!subscription.active) {
+        console.log(`Skipping inactive subscription: ${subscription.name}`);
+        continue;
+      }
+      
+      try {
+        console.log(`Checking feed: ${subscription.name} (${subscription.zone})`);
+        const alerts = await capParser.fetchAndParseFeed(subscription.url);
+        checkedCount++;
+        
+        for (const alert of alerts) {
+          if (!processedAlerts.has(alert.id)) {
+            await postAlertToSlack(alert, subscription);
+            await markAlertAsProcessed(alert.id);
+            alertCount++;
+          }
+        }
+      } catch (error) {
+        console.error(`Error checking feed ${subscription.url}:`, error.message);
+      }
+    }
+    
+    console.log(`Alert check complete: checked ${checkedCount} feeds, posted ${alertCount} new alerts`);
+  } catch (error) {
+    console.error('Critical error in checkForAlerts:', error);
+    console.error('Stack trace:', error.stack);
   }
 }
 
@@ -697,7 +721,26 @@ app.action('quick_forecast', async ({ ack, body, client }) => {
   await app.start();
   console.log('⚡️ NWS Weather Alerts Slack app is running!');
   
-  pollingInterval = setInterval(checkForAlerts, POLLING_INTERVAL);
+  // Initialize data on startup
+  try {
+    console.log('Initializing data directory and subscriptions...');
+    const subscriptions = await getSubscriptions();
+    console.log(`Initialized with ${subscriptions.length} subscription(s)`);
+    
+    if (subscriptions.length > 0) {
+      console.log('Active subscriptions:');
+      subscriptions.forEach(sub => {
+        console.log(`  - ${sub.name} (${sub.zone}): ${sub.active ? 'Active' : 'Inactive'}`);
+      });
+    }
+  } catch (error) {
+    console.error('Error initializing data:', error);
+  }
   
+  // Start polling for alerts
+  pollingInterval = setInterval(checkForAlerts, POLLING_INTERVAL);
+  console.log(`Alert polling started (interval: ${POLLING_INTERVAL / 1000 / 60} minutes)`);
+  
+  // Run initial check
   checkForAlerts();
 })();

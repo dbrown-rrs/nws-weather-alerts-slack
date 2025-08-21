@@ -22,8 +22,19 @@ pids/
 *.pid.lock
 
 # Data storage (contains sensitive subscription data)
-data/
-*.json
+data/*.json
+data/processed_alerts.json
+data/subscriptions.json
+data/user-locations.json
+data/weather-cache.json
+# But keep the data directory itself
+!data/.gitkeep
+
+# JSON files in root (but keep package.json and tsconfig.json)
+/*.json
+!package.json
+!package-lock.json
+!tsconfig.json
 
 # Build output
 dist/
