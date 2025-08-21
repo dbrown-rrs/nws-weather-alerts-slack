@@ -338,36 +338,45 @@ app.action('refresh_home', async ({ ack, body, client }) => {
 
 // Weather forecast slash commands
 app.command('/weather-forecast', async ({ command, ack, respond }) => {
-  await ack();
+  const startTime = Date.now();
+  console.log(`[CMD /weather-forecast] Received: "${command.text}" from ${command.user_id} at ${new Date().toISOString()}`);
   
-  try {
-    const location = command.text.trim();
-    if (!location) {
-      await respond({
-        response_type: 'ephemeral',
-        text: 'Please specify a location. Example: `/weather-forecast New York, NY` or `/weather-forecast 10001`'
-      });
-      return;
-    }
-
-    // Send initial response
-    await respond({
-      response_type: 'in_channel',
-      text: `🔄 Getting 7-day forecast for "${location}"...`
+  const location = command.text.trim();
+  if (!location) {
+    // Acknowledge with error message directly
+    await ack({
+      response_type: 'ephemeral',
+      text: 'Please specify a location. Example: `/weather-forecast New York, NY` or `/weather-forecast 10001`'
     });
+    return;
+  }
 
-    // Get forecast data
+  // Acknowledge immediately with loading message
+  await ack({
+    response_type: 'in_channel', 
+    text: `🔄 Getting 7-day forecast for "${location}"...`
+  });
+  console.log(`[CMD /weather-forecast] Acknowledged with loading message in ${Date.now() - startTime}ms`);
+
+  try {
+    // Get forecast data in background (can take time now)
+    console.log(`[CMD /weather-forecast] Starting forecast fetch (${Date.now() - startTime}ms elapsed)`);
     const forecastData = await forecastService.getSevenDayForecast(location);
+    console.log(`[CMD /weather-forecast] Forecast data received (${Date.now() - startTime}ms elapsed)`);
+    
     const formatted = weatherFormatter.formatSevenDayForecast(forecastData);
+    console.log(`[CMD /weather-forecast] Forecast formatted (${Date.now() - startTime}ms elapsed)`);
 
-    // Update with forecast
+    // Update with actual forecast
     await respond({
       response_type: 'in_channel',
       ...formatted
     });
+    
+    console.log(`[CMD /weather-forecast] Successfully completed in ${Date.now() - startTime}ms`);
 
   } catch (error) {
-    console.error('Error in weather-forecast command:', error);
+    console.error(`[CMD /weather-forecast] Error after ${Date.now() - startTime}ms:`, error);
     await respond({
       response_type: 'ephemeral',
       text: `❌ Error getting forecast: ${error.message}`
@@ -376,23 +385,28 @@ app.command('/weather-forecast', async ({ command, ack, respond }) => {
 });
 
 app.command('/weather-hourly', async ({ command, ack, respond }) => {
-  await ack();
+  const startTime = Date.now();
+  console.log(`[CMD /weather-hourly] Received: "${command.text}" from ${command.user_id} at ${new Date().toISOString()}`);
   
-  try {
-    const location = command.text.trim();
-    if (!location) {
-      await respond({
-        response_type: 'ephemeral',
-        text: 'Please specify a location. Example: `/weather-hourly Bergen County, NJ`'
-      });
-      return;
-    }
-
-    await respond({
-      response_type: 'in_channel',
-      text: `🔄 Getting hourly forecast for "${location}"...`
+  const location = command.text.trim();
+  if (!location) {
+    // Acknowledge with error message directly
+    await ack({
+      response_type: 'ephemeral',
+      text: 'Please specify a location. Example: `/weather-hourly Bergen County, NJ`'
     });
+    return;
+  }
 
+  // Acknowledge immediately with loading message
+  await ack({
+    response_type: 'in_channel',
+    text: `🔄 Getting hourly forecast for "${location}"...`
+  });
+  console.log(`[CMD /weather-hourly] Acknowledged with loading message in ${Date.now() - startTime}ms`);
+
+  try {
+    console.log(`[CMD /weather-hourly] Starting hourly forecast fetch (${Date.now() - startTime}ms elapsed)`);
     const forecastData = await forecastService.getHourlyForecast(location, 24);
     const formatted = weatherFormatter.formatHourlyForecast(forecastData, 24);
 
@@ -400,9 +414,11 @@ app.command('/weather-hourly', async ({ command, ack, respond }) => {
       response_type: 'in_channel',
       ...formatted
     });
+    
+    console.log(`[CMD /weather-hourly] Successfully completed in ${Date.now() - startTime}ms`);
 
   } catch (error) {
-    console.error('Error in weather-hourly command:', error);
+    console.error(`[CMD /weather-hourly] Error after ${Date.now() - startTime}ms:`, error);
     await respond({
       response_type: 'ephemeral',
       text: `❌ Error getting hourly forecast: ${error.message}`
@@ -411,23 +427,28 @@ app.command('/weather-hourly', async ({ command, ack, respond }) => {
 });
 
 app.command('/weather-current', async ({ command, ack, respond }) => {
-  await ack();
+  const startTime = Date.now();
+  console.log(`[CMD /weather-current] Received: "${command.text}" from ${command.user_id} at ${new Date().toISOString()}`);
   
-  try {
-    const location = command.text.trim();
-    if (!location) {
-      await respond({
-        response_type: 'ephemeral',
-        text: 'Please specify a location. Example: `/weather-current Ramsey, NJ`'
-      });
-      return;
-    }
-
-    await respond({
-      response_type: 'in_channel',
-      text: `🔄 Getting current conditions for "${location}"...`
+  const location = command.text.trim();
+  if (!location) {
+    // Acknowledge with error message directly
+    await ack({
+      response_type: 'ephemeral',
+      text: 'Please specify a location. Example: `/weather-current Ramsey, NJ`'
     });
+    return;
+  }
 
+  // Acknowledge immediately with loading message
+  await ack({
+    response_type: 'in_channel',
+    text: `🔄 Getting current conditions for "${location}"...`
+  });
+  console.log(`[CMD /weather-current] Acknowledged with loading message in ${Date.now() - startTime}ms`);
+
+  try {
+    console.log(`[CMD /weather-current] Starting current conditions fetch (${Date.now() - startTime}ms elapsed)`);
     const conditionsData = await forecastService.getCurrentConditions(location);
     const formatted = weatherFormatter.formatCurrentConditions(conditionsData);
 
@@ -435,9 +456,11 @@ app.command('/weather-current', async ({ command, ack, respond }) => {
       response_type: 'in_channel',
       ...formatted
     });
+    
+    console.log(`[CMD /weather-current] Successfully completed in ${Date.now() - startTime}ms`);
 
   } catch (error) {
-    console.error('Error in weather-current command:', error);
+    console.error(`[CMD /weather-current] Error after ${Date.now() - startTime}ms:`, error);
     await respond({
       response_type: 'ephemeral',
       text: `❌ Error getting current conditions: ${error.message}`
