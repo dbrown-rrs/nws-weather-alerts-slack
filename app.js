@@ -825,9 +825,7 @@ app.action('quick_forecast', async ({ ack, body, client }) => {
   console.log(`Alert polling started (interval: ${POLLING_INTERVAL / 1000 / 60} minutes)`);
   
   // Start health monitoring
-  console.log('About to start health monitoring...');
   startHealthCheck();
-  console.log('Health monitoring should be started.');
   
   // Run initial check
   checkForAlerts();
