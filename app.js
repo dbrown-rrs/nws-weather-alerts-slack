@@ -514,9 +514,41 @@ app.command('/weather-locations', async ({ command, ack, client, body }) => {
   const startTime = Date.now();
   console.log(`[CMD /weather-locations] Received at ${new Date().toISOString()}, user: ${body.user_id}`);
   
+  // Test if trigger_id is already old
+  const triggerIdParts = body.trigger_id.split('.');
+  const triggerTimestamp = parseInt(triggerIdParts[0]);
+  const currentTimestamp = Math.floor(Date.now() / 1000);
+  const triggerAge = currentTimestamp - triggerTimestamp;
+  console.log(`[CMD /weather-locations] Trigger ID age: ${triggerAge} seconds`);
+  
   // Acknowledge IMMEDIATELY - this is critical for slash commands
   await ack();
   console.log(`[CMD /weather-locations] Acknowledged in ${Date.now() - startTime}ms`);
+  
+  // If trigger_id is already old, don't even try to open modal
+  if (triggerAge > 2) {
+    console.error(`[CMD /weather-locations] Trigger ID is already ${triggerAge} seconds old - Socket Mode delay!`);
+    
+    // Get locations and send as a message instead
+    const userLocations = await locationManager.locationService.getUserLocations(body.user_id);
+    
+    if (userLocations.length === 0) {
+      await client.chat.postMessage({
+        channel: body.channel_id,
+        text: `📍 *Your Saved Locations*\n\nYou haven't saved any locations yet.\n\n*To save a location:*\n1. Get a forecast: \`/weather-forecast [location]\`\n2. Click "Save this location" button\n\n_Examples: "Ramsey, NJ", "07446", "41.06,-74.14"_`
+      });
+    } else {
+      const locationsList = userLocations.map((loc, idx) => 
+        `${idx + 1}. *${loc.nickname}*\n   📍 ${loc.formattedAddress}`
+      ).join('\n\n');
+      
+      await client.chat.postMessage({
+        channel: body.channel_id,
+        text: `📍 *Your Saved Locations*\n\n${locationsList}\n\n*To use a location:*\n\`/weather-forecast [nickname]\`\n\n*To add new locations:*\n\`/weather-forecast [new location]\` then click "Save"`
+      });
+    }
+    return;
+  }
   
   try {
     // Open loading modal FIRST to use trigger_id immediately
@@ -561,50 +593,131 @@ app.command('/weather-locations', async ({ command, ack, client, body }) => {
   } catch (error) {
     console.error(`[CMD /weather-locations] Error (${Date.now() - startTime}ms elapsed):`, error);
     
-    // Check if it's specifically a trigger_id issue
     if (error.data?.error === 'expired_trigger_id') {
-      console.error(`[CMD /weather-locations] Trigger ID expired after ${Date.now() - startTime}ms. This should not happen with slash commands!`);
+      // Socket Mode is causing delays - provide alternative
+      const userLocations = await locationManager.locationService.getUserLocations(body.user_id);
+      
+      if (userLocations.length === 0) {
+        await client.chat.postMessage({
+          channel: body.channel_id,
+          text: `📍 *Your Saved Locations*\n\nYou haven't saved any locations yet.\n\n*To save a location:*\n1. Get a forecast: \`/weather-forecast [location]\`\n2. Click "Save this location" button`
+        });
+      } else {
+        const locationsList = userLocations.map((loc, idx) => 
+          `${idx + 1}. *${loc.nickname}*\n   📍 ${loc.formattedAddress}`
+        ).join('\n\n');
+        
+        await client.chat.postMessage({
+          channel: body.channel_id,
+          text: `📍 *Your Saved Locations*\n\n${locationsList}\n\n*Note:* Due to Socket Mode timing, the interactive modal couldn't be opened.\nUse \`/weather-forecast [nickname]\` to get forecasts.`
+        });
+      }
+    } else {
+      await client.chat.postEphemeral({
+        channel: body.channel_id,
+        user: body.user_id,
+        text: `❌ Error: ${error.message}`
+      });
     }
-    
-    await client.chat.postEphemeral({
-      channel: body.channel_id,
-      user: body.user_id,
-      text: `❌ Error opening locations manager: ${error.message}\n\nPlease try again. If this persists, contact support.`
-    });
   }
 });
 
 app.command('/weather-add-location', async ({ command, ack, client, body }) => {
   const startTime = Date.now();
-  console.log(`[CMD /weather-add-location] Received at ${new Date().toISOString()}, user: ${body.user_id}`);
+  console.log(`[CMD /weather-add-location] Received at ${new Date().toISOString()}, user: ${body.user_id}, trigger_id: ${body.trigger_id}`);
+  
+  // Test if trigger_id is already old
+  const triggerIdParts = body.trigger_id.split('.');
+  const triggerTimestamp = parseInt(triggerIdParts[0]);
+  const currentTimestamp = Math.floor(Date.now() / 1000);
+  const triggerAge = currentTimestamp - triggerTimestamp;
+  console.log(`[CMD /weather-add-location] Trigger ID age: ${triggerAge} seconds`);
   
   // Acknowledge IMMEDIATELY - this is critical for slash commands
   await ack();
   console.log(`[CMD /weather-add-location] Acknowledged in ${Date.now() - startTime}ms`);
   
-  try {
-    console.log(`[CMD /weather-add-location] Building modal (${Date.now() - startTime}ms elapsed)`);
-    const modal = locationManager.buildAddLocationModal();
+  // If trigger_id is already old, don't even try to open modal
+  if (triggerAge > 2) {
+    console.error(`[CMD /weather-add-location] Trigger ID is already ${triggerAge} seconds old - Socket Mode delay!`);
     
-    console.log(`[CMD /weather-add-location] Opening modal with trigger_id: ${body.trigger_id} (${Date.now() - startTime}ms elapsed)`);
-    await client.views.open({
-      trigger_id: body.trigger_id,
-      view: modal
+    // Send instructions as a message instead
+    await client.chat.postMessage({
+      channel: body.channel_id,
+      text: `📍 *Add a Location*\n\nDue to a technical limitation with Socket Mode, the form cannot be opened directly.\n\n*Alternative methods:*\n1. Use the web/desktop Slack app (not mobile)\n2. Type your location directly: \`/weather-forecast [location]\`\n3. Contact support for assistance\n\n_Location examples: "Ramsey, NJ", "07446", "41.06,-74.14"_`
     });
-    console.log(`[CMD /weather-add-location] Successfully opened modal (${Date.now() - startTime}ms elapsed)`);
-  } catch (error) {
-    console.error(`[CMD /weather-add-location] Error opening modal (${Date.now() - startTime}ms elapsed):`, error);
+    return;
+  }
+  
+  try {
+    // Try the simplest possible modal first
+    const simpleModal = {
+      type: 'modal',
+      callback_id: 'add_location_modal',
+      title: {
+        type: 'plain_text',
+        text: 'Add Location'
+      },
+      submit: {
+        type: 'plain_text',
+        text: 'Add'
+      },
+      close: {
+        type: 'plain_text',
+        text: 'Cancel'
+      },
+      blocks: [{
+        type: 'input',
+        block_id: 'location_nickname',
+        label: {
+          type: 'plain_text',
+          text: 'Location Nickname'
+        },
+        element: {
+          type: 'plain_text_input',
+          action_id: 'nickname_input',
+          placeholder: {
+            type: 'plain_text',
+            text: 'e.g., Home, Office'
+          }
+        }
+      }]
+    };
     
-    // Check if it's specifically a trigger_id issue
-    if (error.data?.error === 'expired_trigger_id') {
-      console.error(`[CMD /weather-add-location] Trigger ID expired after ${Date.now() - startTime}ms. This should not happen with slash commands!`);
+    console.log(`[CMD /weather-add-location] Opening simple modal (${Date.now() - startTime}ms elapsed)`);
+    const result = await client.views.open({
+      trigger_id: body.trigger_id,
+      view: simpleModal
+    });
+    
+    if (result.ok) {
+      console.log(`[CMD /weather-add-location] Simple modal opened! Now updating with full modal (${Date.now() - startTime}ms elapsed)`);
+      
+      // If simple modal worked, update with full modal
+      const fullModal = locationManager.buildAddLocationModal();
+      await client.views.update({
+        view_id: result.view.id,
+        view: fullModal
+      });
+      console.log(`[CMD /weather-add-location] Successfully updated to full modal (${Date.now() - startTime}ms elapsed)`);
     }
     
-    await client.chat.postEphemeral({
-      channel: body.channel_id,
-      user: body.user_id,
-      text: `❌ Error opening add location form: ${error.message}\n\nPlease try again. If this persists, contact support.`
-    });
+  } catch (error) {
+    console.error(`[CMD /weather-add-location] Error (${Date.now() - startTime}ms elapsed):`, error);
+    
+    if (error.data?.error === 'expired_trigger_id') {
+      // Socket Mode is causing delays - provide alternative
+      await client.chat.postMessage({
+        channel: body.channel_id,
+        text: `📍 *Add a Location*\n\nThe form couldn't be opened due to Socket Mode timing issues.\n\n*Alternative: Save a location directly*\nUse: \`/weather-forecast [location]\`\n\nThen click "Save this location" when the forecast appears.\n\n_Examples: "Ramsey, NJ", "07446", "41.06,-74.14"_`
+      });
+    } else {
+      await client.chat.postEphemeral({
+        channel: body.channel_id,
+        user: body.user_id,
+        text: `❌ Error: ${error.message}`
+      });
+    }
   }
 });
 
