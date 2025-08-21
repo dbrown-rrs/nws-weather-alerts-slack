@@ -24,6 +24,12 @@ const forecastService = new ForecastService();
 const weatherFormatter = new WeatherFormatter();
 const locationManager = new LocationManager();
 let pollingInterval = null;
+let healthCheckInterval = null;
+let lastSuccessfulCheck = Date.now();
+let consecutiveFailures = 0;
+let startTime = Date.now();
+const maxFailures = 3;
+const HEALTH_CHECK_INTERVAL = 30 * 1000; // 30 seconds
 
 async function checkForAlerts() {
   console.log('Checking for weather alerts...');
@@ -66,9 +72,15 @@ async function checkForAlerts() {
     }
     
     console.log(`Alert check complete: checked ${checkedCount} feeds, posted ${alertCount} new alerts`);
+    
+    // Update health tracking
+    lastSuccessfulCheck = Date.now();
+    consecutiveFailures = 0;
+    
   } catch (error) {
     console.error('Critical error in checkForAlerts:', error);
     console.error('Stack trace:', error.stack);
+    consecutiveFailures++;
   }
 }
 
@@ -85,6 +97,77 @@ async function postAlertToSlack(alert, subscription) {
     console.log(`Posted alert ${alert.id} to Slack`);
   } catch (error) {
     console.error('Error posting alert to Slack:', error);
+  }
+}
+
+// Health monitoring functions
+function startHealthCheck() {
+  healthCheckInterval = setInterval(() => {
+    performHealthCheck();
+  }, HEALTH_CHECK_INTERVAL);
+  
+  console.log(`💓 Health monitoring started (${HEALTH_CHECK_INTERVAL/1000}s intervals)`);
+}
+
+async function performHealthCheck() {
+  const now = Date.now();
+  const timeSinceLastCheck = now - lastSuccessfulCheck;
+  const maxAllowedDelay = POLLING_INTERVAL * 2; // Allow 2x polling interval
+  
+  console.log(`💓 Health check - Last successful: ${Math.round(timeSinceLastCheck/1000)}s ago, Failures: ${consecutiveFailures}`);
+  
+  // Check if we've had too many failures
+  if (consecutiveFailures >= maxFailures) {
+    console.error(`🚨 CRITICAL: ${consecutiveFailures} consecutive failures detected!`);
+    await sendCriticalAlert('Multiple consecutive failures detected');
+  }
+  
+  // Check if last successful check was too long ago  
+  if (timeSinceLastCheck > maxAllowedDelay) {
+    console.error(`🚨 CRITICAL: Last successful check was ${Math.round(timeSinceLastCheck/60000)} minutes ago!`);
+    await sendCriticalAlert('Alert monitoring has been offline too long');
+  }
+  
+  // Test Slack connection
+  try {
+    await app.client.auth.test();
+    console.log('✅ Slack connection healthy');
+  } catch (error) {
+    console.error('❌ Slack connection failed:', error);
+    consecutiveFailures++;
+  }
+}
+
+async function sendCriticalAlert(reason) {
+  try {
+    const { ADMIN_USERS } = require('./config/admins');
+    const uptime = Math.round((Date.now() - startTime) / 60000);
+    
+    const message = `🚨 **WEATHER ALERTS SYSTEM FAILURE** 🚨
+
+Reason: ${reason}
+Uptime: ${uptime} minutes
+Time: ${new Date().toLocaleString()}
+
+**IMMEDIATE ACTION REQUIRED**`;
+    
+    for (const adminId of ADMIN_USERS) {
+      await app.client.chat.postMessage({
+        channel: adminId,
+        text: message
+      });
+    }
+    
+    // Also post to the alerts channel
+    await app.client.chat.postMessage({
+      channel: TARGET_CHANNEL,
+      text: `🚨 **SYSTEM ALERT**: Weather monitoring system requires attention. Admins have been notified.`
+    });
+    
+    console.log(`🚨 Critical alert sent: ${reason}`);
+    
+  } catch (error) {
+    console.error('❌ Failed to send critical alert:', error);
   }
 }
 
@@ -740,6 +823,11 @@ app.action('quick_forecast', async ({ ack, body, client }) => {
   // Start polling for alerts
   pollingInterval = setInterval(checkForAlerts, POLLING_INTERVAL);
   console.log(`Alert polling started (interval: ${POLLING_INTERVAL / 1000 / 60} minutes)`);
+  
+  // Start health monitoring
+  console.log('About to start health monitoring...');
+  startHealthCheck();
+  console.log('Health monitoring should be started.');
   
   // Run initial check
   checkForAlerts();
