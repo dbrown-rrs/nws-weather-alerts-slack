@@ -519,17 +519,47 @@ app.command('/weather-locations', async ({ command, ack, client, body }) => {
   console.log(`[CMD /weather-locations] Acknowledged in ${Date.now() - startTime}ms`);
   
   try {
-    console.log(`[CMD /weather-locations] Building modal (${Date.now() - startTime}ms elapsed)`);
+    // Open loading modal FIRST to use trigger_id immediately
+    const loadingModal = {
+      type: 'modal',
+      callback_id: 'manage_locations_modal',
+      title: {
+        type: 'plain_text',
+        text: 'Manage Locations'
+      },
+      close: {
+        type: 'plain_text',
+        text: 'Close'
+      },
+      blocks: [{
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: '⏳ *Loading your saved locations...*'
+        }
+      }]
+    };
+    
+    console.log(`[CMD /weather-locations] Opening loading modal (${Date.now() - startTime}ms elapsed)`);
+    const result = await client.views.open({
+      trigger_id: body.trigger_id,
+      view: loadingModal
+    });
+    console.log(`[CMD /weather-locations] Loading modal opened (${Date.now() - startTime}ms elapsed)`);
+    
+    // Now build and update with full modal
+    console.log(`[CMD /weather-locations] Building full modal (${Date.now() - startTime}ms elapsed)`);
     const modal = await locationManager.buildManageLocationsModal(body.user_id);
     
-    console.log(`[CMD /weather-locations] Opening modal with trigger_id: ${body.trigger_id} (${Date.now() - startTime}ms elapsed)`);
-    await client.views.open({
-      trigger_id: body.trigger_id,
+    console.log(`[CMD /weather-locations] Updating to full modal (${Date.now() - startTime}ms elapsed)`);
+    await client.views.update({
+      view_id: result.view.id,
       view: modal
     });
-    console.log(`[CMD /weather-locations] Successfully opened modal (${Date.now() - startTime}ms elapsed)`);
+    console.log(`[CMD /weather-locations] Successfully completed in ${Date.now() - startTime}ms`);
+    
   } catch (error) {
-    console.error(`[CMD /weather-locations] Error opening modal (${Date.now() - startTime}ms elapsed):`, error);
+    console.error(`[CMD /weather-locations] Error (${Date.now() - startTime}ms elapsed):`, error);
     
     // Check if it's specifically a trigger_id issue
     if (error.data?.error === 'expired_trigger_id') {
