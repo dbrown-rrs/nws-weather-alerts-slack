@@ -112,19 +112,21 @@ function startHealthCheck() {
 async function performHealthCheck() {
   const now = Date.now();
   const timeSinceLastCheck = now - lastSuccessfulCheck;
-  const maxAllowedDelay = POLLING_INTERVAL * 2; // Allow 2x polling interval
+  const maxAllowedDelay = POLLING_INTERVAL * 3; // Allow 3x polling interval (15 minutes) to be more lenient
   
-  console.log(`💓 Health check - Last successful: ${Math.round(timeSinceLastCheck/1000)}s ago, Failures: ${consecutiveFailures}`);
+  console.log(`💓 Health check - Last successful: ${Math.round(timeSinceLastCheck/1000)}s ago, Failures: ${consecutiveFailures}, Max allowed: ${Math.round(maxAllowedDelay/1000)}s`);
   
   // Check if we've had too many failures
   if (consecutiveFailures >= maxFailures) {
     console.error(`🚨 CRITICAL: ${consecutiveFailures} consecutive failures detected!`);
+    console.log(`🔍 DEBUG: About to send critical alert for consecutive failures`);
     await sendCriticalAlert('Multiple consecutive failures detected');
   }
   
   // Check if last successful check was too long ago  
   if (timeSinceLastCheck > maxAllowedDelay) {
-    console.error(`🚨 CRITICAL: Last successful check was ${Math.round(timeSinceLastCheck/60000)} minutes ago!`);
+    console.error(`🚨 CRITICAL: Last successful check was ${Math.round(timeSinceLastCheck/60000)} minutes ago! (Max allowed: ${Math.round(maxAllowedDelay/60000)} minutes)`);
+    console.log(`🔍 DEBUG: About to send critical alert for offline too long`);
     await sendCriticalAlert('Alert monitoring has been offline too long');
   }
   
@@ -139,9 +141,13 @@ async function performHealthCheck() {
 }
 
 async function sendCriticalAlert(reason) {
+  console.log(`🔍 DEBUG: sendCriticalAlert called with reason: "${reason}"`);
+  
   try {
     const { ADMIN_USERS } = require('./config/admins');
     const uptime = Math.round((Date.now() - startTime) / 60000);
+    
+    console.log(`🔍 DEBUG: Sending critical alert to ${ADMIN_USERS.length} admin(s) and channel ${TARGET_CHANNEL}`);
     
     const message = `🚨 **WEATHER ALERTS SYSTEM FAILURE** 🚨
 
@@ -156,6 +162,7 @@ Time: ${new Date().toLocaleString()}
         channel: adminId,
         text: message
       });
+      console.log(`🔍 DEBUG: Sent critical alert to admin ${adminId}`);
     }
     
     // Also post to the alerts channel
@@ -164,7 +171,7 @@ Time: ${new Date().toLocaleString()}
       text: `🚨 **SYSTEM ALERT**: Weather monitoring system requires attention. Admins have been notified.`
     });
     
-    console.log(`🚨 Critical alert sent: ${reason}`);
+    console.log(`🚨 Critical alert sent successfully: ${reason}`);
     
   } catch (error) {
     console.error('❌ Failed to send critical alert:', error);
