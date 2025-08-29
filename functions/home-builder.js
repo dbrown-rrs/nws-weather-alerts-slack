@@ -189,15 +189,6 @@ async function buildWeatherSection(userId, locationManager) {
     text: {
       type: 'mrkdwn',
       text: '*🌤️ Weather Forecasts*'
-    },
-    accessory: {
-      type: 'button',
-      text: {
-        type: 'plain_text',
-        text: '⚙️ Manage Locations'
-      },
-      action_id: 'manage_locations',
-      style: 'primary'
     }
   });
 
@@ -265,14 +256,6 @@ async function buildWeatherSection(userId, locationManager) {
         type: 'mrkdwn',
         text: 'Save frequently used locations for quick weather access!\n\n*Example locations:*\n• `Ramsey, NJ`\n• `07446`\n• `41.06,-74.14`'
       },
-      accessory: {
-        type: 'button',
-        text: {
-          type: 'plain_text',
-          text: '➕ Add Location'
-        },
-        action_id: 'add_location_button'
-      }
     });
   }
 

@@ -67,6 +67,11 @@ class WeatherFormatter {
     return this.tempColors.extreme_hot;
   }
 
+  // Convert Celsius to Fahrenheit
+  celsiusToFahrenheit(celsius) {
+    return (celsius * 9/5) + 32;
+  }
+
   // Format temperature with appropriate units and emoji
   formatTemperature(temp, unit = 'F', includeEmoji = true) {
     if (!temp && temp !== 0) return 'N/A';
@@ -83,6 +88,21 @@ class WeatherFormatter {
     }
     
     return `${emoji} ${rounded}°${unit}`;
+  }
+
+  // Format NWS observation temperature (convert from Celsius to Fahrenheit)
+  formatObservationTemperature(tempObj, includeEmoji = true) {
+    if (!tempObj || (!tempObj.value && tempObj.value !== 0)) return 'N/A';
+    
+    let tempF = tempObj.value;
+    
+    // NWS API returns temperatures in Celsius for current observations
+    // Check unitCode to determine if conversion is needed
+    if (tempObj.unitCode === 'wmoUnit:degC' || tempObj.unitCode === 'unit:degC') {
+      tempF = this.celsiusToFahrenheit(tempObj.value);
+    }
+    
+    return this.formatTemperature(tempF, 'F', includeEmoji);
   }
 
   // Format wind information
@@ -141,7 +161,7 @@ class WeatherFormatter {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*Current:* ${this.formatTemperature(currentObservation.temperature.value, 'F')} - ${currentObservation.textDescription || 'Conditions not available'}`
+          text: `*Current:* ${this.formatObservationTemperature(currentObservation.temperature)} - ${currentObservation.textDescription || 'Conditions not available'}`
         }
       });
     }
@@ -203,7 +223,7 @@ class WeatherFormatter {
         type: 'section',
         text: {
           type: 'mrkdwn',
-          text: `*Current:* ${this.formatTemperature(currentObservation.temperature.value, 'F')} - ${currentObservation.textDescription || 'Conditions not available'}`
+          text: `*Current:* ${this.formatObservationTemperature(currentObservation.temperature)} - ${currentObservation.textDescription || 'Conditions not available'}`
         }
       });
     }
@@ -374,11 +394,11 @@ class WeatherFormatter {
     }
     
     if (obs.temperature) {
-      text += `🌡️ *Temperature:* ${Math.round(obs.temperature.value)}°F\n`;
+      text += `🌡️ *Temperature:* ${this.formatObservationTemperature(obs.temperature, false)}\n`;
     }
     
     if (obs.dewpoint) {
-      text += `💧 *Dewpoint:* ${Math.round(obs.dewpoint.value)}°F\n`;
+      text += `💧 *Dewpoint:* ${this.formatObservationTemperature(obs.dewpoint, false)}\n`;
     }
     
     if (obs.relativeHumidity) {
